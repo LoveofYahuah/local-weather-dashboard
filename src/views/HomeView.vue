@@ -5,16 +5,21 @@ import { useWeatherStore } from '../stores/weather'
 const store = useWeatherStore()
 const searchInput = ref('')
 
-// Fetch default city weather when page loads
 onMounted(() => {
-  store.fetchWeather('Port Harcourt')
+  store.initDefaultCity('Port Harcourt')
 })
 
 const handleSearch = () => {
   if (searchInput.value.trim()) {
-    store.fetchWeather(searchInput.value)
-    searchInput.value = ''
+    store.searchCities(searchInput.value)
   }
+}
+
+const selectCity = (location) => {
+  // Combine town name and State/Region (e.g. "Ilorin, Kwara")
+  const displayName = location.admin1 ? `${location.name}, ${location.admin1}` : location.name
+  store.fetchWeatherByCoordinates(location.latitude, location.longitude, displayName)
+  searchInput.value = '' // Clear input
 }
 </script>
 
@@ -29,22 +34,40 @@ const handleSearch = () => {
       <p class="text-slate-400 text-sm mt-1">Vue 3 + Pinia Serverless SPA</p>
     </div>
 
-    <!-- Search Bar -->
-    <div class="mb-8">
-      <form @submit.prevent="handleSearch" class="flex gap-2 max-w-md mx-auto">
+    <!-- Search Form and Suggestion Dropdown -->
+    <div class="mb-8 relative max-w-md mx-auto">
+      <form @submit.prevent="handleSearch" class="flex gap-2">
         <input 
           v-model="searchInput"
           type="text" 
-          placeholder="Search for a city..." 
+          placeholder="Search for a city or town..." 
           class="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-slate-500"
         />
-        <button 
-          type="submit" 
-          class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition"
-        >
+        <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition">
           Search
         </button>
       </form>
+
+      <!-- Suggestion List -->
+      <div v-if="store.searchResults.length > 0" class="absolute z-10 left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+        <div class="px-4 py-2 bg-slate-900 border-b border-slate-700 text-xs font-bold text-slate-500 tracking-wider">
+          SELECT A LOCATION:
+        </div>
+        <ul>
+          <li 
+            v-for="place in store.searchResults" 
+            :key="place.id"
+            @click="selectCity(place)"
+            class="px-4 py-3 hover:bg-slate-700 cursor-pointer text-sm text-slate-200 transition flex justify-between items-center"
+          >
+            <span>
+              <span class="font-bold text-white">{{ place.name }}</span>
+              <span v-if="place.admin1" class="text-slate-400 text-xs">, {{ place.admin1 }}</span>
+            </span>
+            <span class="text-xs text-blue-400 font-semibold uppercase">Select</span>
+          </li>
+        </ul>
+      </div>
     </div>
 
     <!-- Error State -->
@@ -78,17 +101,11 @@ const handleSearch = () => {
       <!-- 5-Day Forecast Grid -->
       <h3 class="text-lg font-bold text-slate-300 mb-4 px-2">5-Day Forecast</h3>
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <div 
-          v-for="day in store.forecast" 
-          :key="day.date" 
-          class="bg-slate-800/30 border border-slate-800 rounded-2xl p-4 text-center hover:border-slate-700 transition"
-        >
+        <div v-for="day in store.forecast" :key="day.date" class="bg-slate-800/30 border border-slate-800 rounded-2xl p-4 text-center hover:border-slate-700 transition">
           <p class="text-xs font-semibold text-slate-400 uppercase">
             {{ new Date(day.date).toLocaleDateString('en', { weekday: 'short' }) }}
           </p>
-          <div class="text-3xl my-2">
-            {{ store.getWeatherEmoji(day.code) }}
-          </div>
+          <div class="text-3xl my-2">{{ store.getWeatherEmoji(day.code) }}</div>
           <div class="flex justify-center gap-2 text-sm">
             <span class="font-bold text-white">{{ Math.round(day.max) }}°</span>
             <span class="text-slate-500">{{ Math.round(day.min) }}°</span>

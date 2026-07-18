@@ -2,40 +2,51 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 export const useWeatherStore = defineStore('weather', () => {
-  // State (Our reactive data)
   const current = ref(null)
   const forecast = ref([])
   const city = ref('Port Harcourt')
   const loading = ref(false)
   const error = ref(null)
+  const searchResults = ref([]) // New state: stores list of suggested places
 
-  // Actions (Functions that call our Cloud APIs)
-  async function fetchWeather(searchCity = 'Port Harcourt') {
+  // Action 1: Search for matches inside Nigeria
+  async function searchCities(query) {
     loading.value = true
     error.value = null
+    searchResults.value = []
     
     try {
-      // Step 1: Call Geocoding Cloud API to translate "City Name" to Lat/Lon coordinates
-      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchCity)}&count=1&language=en&format=json`
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?country_code=NG&name=${encodeURIComponent(query)}&count=5&language=en&format=json`
       const geoResponse = await fetch(geoUrl)
       const geoData = await geoResponse.json()
 
       if (!geoData.results || geoData.results.length === 0) {
-        throw new Error('City not found. Please try another city.')
+        throw new Error('No matching places found. Try another search.')
       }
 
-      const location = geoData.results[0]
-      city.value = location.name
+      searchResults.value = geoData.results // Store the list of matches
+    } catch (err) {
+      error.value = err.message
+      searchResults.value = []
+    } finally {
+      loading.value = false
+    }
+  }
 
-      // Step 2: Call Weather Cloud API using coordinates
-      const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${location.latitude}&longitude=${location.longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`
+  // Action 2: Fetch weather for a selected coordinate
+  async function fetchWeatherByCoordinates(latitude, longitude, name) {
+    loading.value = true
+    error.value = null
+    searchResults.value = [] // Clear search suggestions after selection
+    city.value = name
+
+    try {
+      const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=temperature_2m_max,temperature_2m_min,weathercode&timezone=auto`
       const weatherResponse = await fetch(weatherUrl)
       const weatherData = await weatherResponse.json()
 
-      // Step 3: Store current weather data
       current.value = weatherData.current_weather
 
-      // Step 4: Store next 5 days of forecast (excluding today)
       forecast.value = weatherData.daily.time.map((date, index) => ({
         date: date,
         max: weatherData.daily.temperature_2m_max[index],
@@ -52,7 +63,24 @@ export const useWeatherStore = defineStore('weather', () => {
     }
   }
 
-  // Helper function to turn Open-Meteo codes into simple Emojis
+  // Action 3: Initial loading (Port Harcourt)
+  async function initDefaultCity(cityName = 'Port Harcourt') {
+    loading.value = true
+    try {
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?country_code=NG&name=${encodeURIComponent(cityName)}&count=1&language=en&format=json`
+      const geoResponse = await fetch(geoUrl)
+      const geoData = await geoResponse.json()
+      if (geoData.results && geoData.results.length > 0) {
+        const firstResult = geoData.results[0]
+        await fetchWeatherByCoordinates(firstResult.latitude, firstResult.longitude, firstResult.name)
+      }
+    } catch (err) {
+      error.value = err.message
+    } finally {
+      loading.value = false
+    }
+  }
+
   function getWeatherEmoji(code) {
     if (code === 0) return '☀️'
     if (code >= 1 && code <= 3) return '⛅'
@@ -64,5 +92,5 @@ export const useWeatherStore = defineStore('weather', () => {
     return '❓'
   }
 
-  return { current, forecast, city, loading, error, fetchWeather, getWeatherEmoji }
+  return { current, forecast, city, loading, error, searchResults, searchCities, fetchWeatherByCoordinates, initDefaultCity, getWeatherEmoji }
 })
